@@ -1,53 +1,28 @@
 pipeline {
     agent any
-
     environment {
-        DOCKER_IMAGE = "raje33/my-springboot-app:latest"
+        DOCKERHUB_CREDS = credentials('dockerhub-creds')
     }
-
     stages {
-
-        stage('Clone Repository') {
+        stage('Build Docker Image') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/raje33/my-springboot-app.git',
-                    credentialsId: 'github-credentials'
+                sh 'docker build -t raje33/my-springboot-app:latest .'
             }
         }
-
-        stage('Build') {
+        stage('Docker Login') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh 'echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin'
             }
         }
-
-        stage('Docker Build') {
+        stage('Push to Docker Hub') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
+                sh 'docker push raje33/my-springboot-app:latest'
             }
         }
-
-        stage('Docker Push') {
+        stage('Run Container') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials',
-                                                 usernameVariable: 'DOCKER_USER',
-                                                 passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                    sh 'docker push $DOCKER_IMAGE'
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                sh '''
-                ssh -o StrictHostKeyChecking=no -i /path/to/key.pem ubuntu@<EC2-IP> "
-                    docker pull $DOCKER_IMAGE &&
-                    docker stop myapp || true &&
-                    docker rm myapp || true &&
-                    docker run -d -p 8080:8080 --name myapp $DOCKER_IMAGE
-                "
-                '''
+                sh 'docker rm -f my-springboot-app || true'
+                sh 'docker run -d --name my-springboot-app -p 8080:8080 raje33/my-springboot-app:latest'
             }
         }
     }
